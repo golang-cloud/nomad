@@ -12,4 +12,6 @@ func NewEnterpriseEndpoints(s *Server) *EnterpriseEndpoints {
 }
 
 // Register is a no-op in oss.
-func (e *EnterpriseEndpoints) Register(s *Server) {}
+func (e *EnterpriseEndpoints) Register(s *Server) {
+	s.rpcServer.Register(&Namespace{s})
+}

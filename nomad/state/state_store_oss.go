@@ -9,7 +9,13 @@ import (
 
 // namespaceExists returns whether a namespace exists
 func (s *StateStore) namespaceExists(txn *memdb.Txn, namespace string) (bool, error) {
-	return namespace == structs.DefaultNamespace, nil
+	existing, err := txn.First("namespace", "id", namespace)
+
+	if err != nil {
+		return false, err
+	}
+
+	return existing != nil, nil
 }
 
 // updateEntWithAlloc is used to update Nomad Enterprise objects when an allocation is
