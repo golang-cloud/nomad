@@ -22,6 +22,19 @@ func (s *StateStore) Namespaces(ws memdb.WatchSet) (memdb.ResultIterator, error)
 	return iter, nil
 }
 
+// NamespacesByNamePrefix is used to lookup policies by prefix
+func (s *StateStore) NamespacesByNamePrefix(ws memdb.WatchSet, prefix string) (memdb.ResultIterator, error) {
+	txn := s.db.Txn(false)
+
+	iter, err := txn.Get("namespace", "id_prefix", prefix)
+	if err != nil {
+		return nil, fmt.Errorf("namespace lookup failed: %v", err)
+	}
+	ws.Add(iter.WatchCh())
+
+	return iter, nil
+}
+
 func (s *StateStore) UpsertNamespace(index uint64, ns *structs.Namespace) error {
 	txn := s.db.Txn(true)
 	defer txn.Abort()

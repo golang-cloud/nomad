@@ -33,6 +33,7 @@ type NamespaceListStub struct {
 type Namespace struct {
 	Name        string
 	Description string
+	Quota       string
 	Hash        []byte
 	CreateTime  time.Time // Time of creation
 	CreateIndex uint64

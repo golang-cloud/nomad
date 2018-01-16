@@ -33,7 +33,13 @@ func (n *Namespace) List(args *structs.NamespaceListRequest, reply *structs.Name
 		queryMeta: &reply.QueryMeta,
 		run: func(ws memdb.WatchSet, state *state.StateStore) error {
 
-			iter, err := state.Namespaces(ws)
+			var err error
+			var iter memdb.ResultIterator
+			if prefix := args.QueryOptions.Prefix; prefix != "" {
+				iter, err = state.NamespacesByNamePrefix(ws, prefix)
+			} else {
+				iter, err = state.Namespaces(ws)
+			}
 
 			if err != nil {
 				return err
