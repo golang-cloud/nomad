@@ -7,7 +7,8 @@ RUN addgroup nomad && \
     adduser -S -G nomad nomad
 
 ADD mars /usr/local/bin/
-ADD server.hcl /etc/nomad/
+ADD server.hcl /etc/nomad/server/
+ADD client.hcl /etc/nomad/client/
 
 RUN chmod +x /usr/local/bin/mars
 
