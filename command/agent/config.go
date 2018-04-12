@@ -87,7 +87,7 @@ type Config struct {
 
 	// DisableUpdateCheck is used to disable the periodic update
 	// and security bulletin checking.
-	DisableUpdateCheck bool `mapstructure:"disable_update_check"`
+	DisableUpdateCheck *bool `mapstructure:"disable_update_check"`
 
 	// DisableAnonymousSignature is used to disable setting the
 	// anonymous signature when doing the update check and looking
@@ -104,11 +104,11 @@ type Config struct {
 	Vault *config.VaultConfig `mapstructure:"vault"`
 
 	// NomadConfig is used to override the default config.
-	// This is largly used for testing purposes.
+	// This is largely used for testing purposes.
 	NomadConfig *nomad.Config `mapstructure:"-" json:"-"`
 
 	// ClientConfig is used to override the default config.
-	// This is largly used for testing purposes.
+	// This is largely used for testing purposes.
 	ClientConfig *client.Config `mapstructure:"-" json:"-"`
 
 	// DevMode is set by the -dev CLI flag.
@@ -125,7 +125,7 @@ type Config struct {
 	TLSConfig *config.TLSConfig `mapstructure:"tls"`
 
 	// HTTPAPIResponseHeaders allows users to configure the Nomad http agent to
-	// set arbritrary headers on API responses
+	// set arbitrary headers on API responses
 	HTTPAPIResponseHeaders map[string]string `mapstructure:"http_api_response_headers"`
 
 	// Sentinel holds sentinel related settings
@@ -174,6 +174,9 @@ type ClientConfig struct {
 
 	// CpuCompute is used to override any detected or default total CPU compute.
 	CpuCompute int `mapstructure:"cpu_total_compute"`
+
+	// MemoryMB is used to override any detected or default total memory.
+	MemoryMB int `mapstructure:"memory_total_mb"`
 
 	// MaxKillTimeout allows capping the user-specifiable KillTimeout.
 	MaxKillTimeout string `mapstructure:"max_kill_timeout"`
@@ -330,9 +333,16 @@ type ServerConfig struct {
 	// true, we ignore the leave, and rejoin the cluster on start.
 	RejoinAfterLeave bool `mapstructure:"rejoin_after_leave"`
 
-	// NonVotingServer is whether this server will act as a non-voting member
-	// of the cluster to help provide read scalability. (Enterprise-only)
+	// (Enterprise-only) NonVotingServer is whether this server will act as a
+	// non-voting member of the cluster to help provide read scalability.
 	NonVotingServer bool `mapstructure:"non_voting_server"`
+
+	// (Enterprise-only) RedundancyZone is the redundancy zone to use for this server.
+	RedundancyZone string `mapstructure:"redundancy_zone"`
+
+	// (Enterprise-only) UpgradeVersion is the custom upgrade version to use when
+	// performing upgrade migrations.
+	UpgradeVersion string `mapstructure:"upgrade_version"`
 
 	// Encryption key to use for the Serf communication
 	EncryptKey string `mapstructure:"encrypt" json:"-"`
@@ -348,6 +358,7 @@ type Telemetry struct {
 	StatsiteAddr             string        `mapstructure:"statsite_address"`
 	StatsdAddr               string        `mapstructure:"statsd_address"`
 	DataDogAddr              string        `mapstructure:"datadog_address"`
+	DataDogTags              []string      `mapstructure:"datadog_tags"`
 	PrometheusMetrics        bool          `mapstructure:"prometheus_metrics"`
 	DisableHostname          bool          `mapstructure:"disable_hostname"`
 	UseNodeName              bool          `mapstructure:"use_node_name"`
@@ -400,7 +411,7 @@ type Telemetry struct {
 	CirconusCheckID string `mapstructure:"circonus_check_id"`
 	// CirconusCheckForceMetricActivation will force enabling metrics, as they are encountered,
 	// if the metric already exists and is NOT active. If check management is enabled, the default
-	// behavior is to add new metrics as they are encoutered. If the metric already exists in the
+	// behavior is to add new metrics as they are encountered. If the metric already exists in the
 	// check, it will *NOT* be activated. This setting overrides that behavior.
 	// Default: "false"
 	CirconusCheckForceMetricActivation string `mapstructure:"circonus_check_force_metric_activation"`
@@ -608,10 +619,11 @@ func DefaultConfig() *Config {
 			CollectionInterval: "1s",
 			collectionInterval: 1 * time.Second,
 		},
-		TLSConfig: &config.TLSConfig{},
-		Sentinel:  &config.SentinelConfig{},
-		Version:   version.GetVersion(),
-		Autopilot: config.DefaultAutopilotConfig(),
+		TLSConfig:          &config.TLSConfig{},
+		Sentinel:           &config.SentinelConfig{},
+		Version:            version.GetVersion(),
+		Autopilot:          config.DefaultAutopilotConfig(),
+		DisableUpdateCheck: helper.BoolToPtr(false),
 	}
 }
 
@@ -677,8 +689,8 @@ func (c *Config) Merge(b *Config) *Config {
 	if b.SyslogFacility != "" {
 		result.SyslogFacility = b.SyslogFacility
 	}
-	if b.DisableUpdateCheck {
-		result.DisableUpdateCheck = true
+	if b.DisableUpdateCheck != nil {
+		result.DisableUpdateCheck = helper.BoolToPtr(*b.DisableUpdateCheck)
 	}
 	if b.DisableAnonymousSignature {
 		result.DisableAnonymousSignature = true
@@ -1034,6 +1046,12 @@ func (a *ServerConfig) Merge(b *ServerConfig) *ServerConfig {
 	if b.NonVotingServer {
 		result.NonVotingServer = true
 	}
+	if b.RedundancyZone != "" {
+		result.RedundancyZone = b.RedundancyZone
+	}
+	if b.UpgradeVersion != "" {
+		result.UpgradeVersion = b.UpgradeVersion
+	}
 	if b.EncryptKey != "" {
 		result.EncryptKey = b.EncryptKey
 	}
@@ -1078,6 +1096,9 @@ func (a *ClientConfig) Merge(b *ClientConfig) *ClientConfig {
 	}
 	if b.CpuCompute != 0 {
 		result.CpuCompute = b.CpuCompute
+	}
+	if b.MemoryMB != 0 {
+		result.MemoryMB = b.MemoryMB
 	}
 	if b.MaxKillTimeout != "" {
 		result.MaxKillTimeout = b.MaxKillTimeout
@@ -1156,6 +1177,9 @@ func (a *Telemetry) Merge(b *Telemetry) *Telemetry {
 	}
 	if b.DataDogAddr != "" {
 		result.DataDogAddr = b.DataDogAddr
+	}
+	if b.DataDogTags != nil {
+		result.DataDogTags = b.DataDogTags
 	}
 	if b.PrometheusMetrics {
 		result.PrometheusMetrics = b.PrometheusMetrics

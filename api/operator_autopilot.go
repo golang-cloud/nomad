@@ -1,11 +1,8 @@
 package api
 
 import (
-	"bytes"
-	"fmt"
-	"io"
+	"encoding/json"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -19,7 +16,7 @@ type AutopilotConfiguration struct {
 
 	// LastContactThreshold is the limit on the amount of time a server can go
 	// without leader contact before being considered unhealthy.
-	LastContactThreshold *ReadableDuration
+	LastContactThreshold time.Duration
 
 	// MaxTrailingLogs is the amount of entries in the Raft Log that a server can
 	// be behind before being considered unhealthy.
@@ -28,20 +25,19 @@ type AutopilotConfiguration struct {
 	// ServerStabilizationTime is the minimum amount of time a server must be
 	// in a stable, healthy state before it can be added to the cluster. Only
 	// applicable with Raft protocol version 3 or higher.
-	ServerStabilizationTime *ReadableDuration
+	ServerStabilizationTime time.Duration
 
-	// (Enterprise-only) RedundancyZoneTag is the node tag to use for separating
-	// servers into zones for redundancy. If left blank, this feature will be disabled.
-	RedundancyZoneTag string
+	// (Enterprise-only) EnableRedundancyZones specifies whether to enable redundancy zones.
+	EnableRedundancyZones bool
 
 	// (Enterprise-only) DisableUpgradeMigration will disable Autopilot's upgrade migration
 	// strategy of waiting until enough newer-versioned servers have been added to the
 	// cluster before promoting them to voters.
 	DisableUpgradeMigration bool
 
-	// (Enterprise-only) UpgradeVersionTag is the node tag to use for version info when
-	// performing upgrade migrations. If left blank, the Nomad version will be used.
-	UpgradeVersionTag string
+	// (Enterprise-only) EnableCustomUpgrades specifies whether to enable using custom
+	// upgrade versions when performing migrations.
+	EnableCustomUpgrades bool
 
 	// CreateIndex holds the index corresponding the creation of this configuration.
 	// This is a read-only field.
@@ -52,6 +48,45 @@ type AutopilotConfiguration struct {
 	// AutopilotCASConfiguration will perform a check-and-set operation which ensures
 	// there hasn't been a subsequent update since the configuration was retrieved.
 	ModifyIndex uint64
+}
+
+func (u *AutopilotConfiguration) MarshalJSON() ([]byte, error) {
+	type Alias AutopilotConfiguration
+	return json.Marshal(&struct {
+		LastContactThreshold    string
+		ServerStabilizationTime string
+		*Alias
+	}{
+		LastContactThreshold:    u.LastContactThreshold.String(),
+		ServerStabilizationTime: u.ServerStabilizationTime.String(),
+		Alias: (*Alias)(u),
+	})
+}
+
+func (u *AutopilotConfiguration) UnmarshalJSON(data []byte) error {
+	type Alias AutopilotConfiguration
+	aux := &struct {
+		LastContactThreshold    string
+		ServerStabilizationTime string
+		*Alias
+	}{
+		Alias: (*Alias)(u),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	var err error
+	if aux.LastContactThreshold != "" {
+		if u.LastContactThreshold, err = time.ParseDuration(aux.LastContactThreshold); err != nil {
+			return err
+		}
+	}
+	if aux.ServerStabilizationTime != "" {
+		if u.ServerStabilizationTime, err = time.ParseDuration(aux.ServerStabilizationTime); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ServerHealth is the health (from the leader's point of view) of a server.
@@ -75,7 +110,7 @@ type ServerHealth struct {
 	Leader bool
 
 	// LastContact is the time since this node's last contact with the leader.
-	LastContact *ReadableDuration
+	LastContact time.Duration
 
 	// LastTerm is the highest leader term this server has a record of in its Raft log.
 	LastTerm uint64
@@ -94,6 +129,37 @@ type ServerHealth struct {
 	StableSince time.Time
 }
 
+func (u *ServerHealth) MarshalJSON() ([]byte, error) {
+	type Alias ServerHealth
+	return json.Marshal(&struct {
+		LastContact string
+		*Alias
+	}{
+		LastContact: u.LastContact.String(),
+		Alias:       (*Alias)(u),
+	})
+}
+
+func (u *ServerHealth) UnmarshalJSON(data []byte) error {
+	type Alias ServerHealth
+	aux := &struct {
+		LastContact string
+		*Alias
+	}{
+		Alias: (*Alias)(u),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	var err error
+	if aux.LastContact != "" {
+		if u.LastContact, err = time.ParseDuration(aux.LastContact); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // OperatorHealthReply is a representation of the overall health of the cluster
 type OperatorHealthReply struct {
 	// Healthy is true if all the servers in the cluster are healthy.
@@ -107,126 +173,46 @@ type OperatorHealthReply struct {
 	Servers []ServerHealth
 }
 
-// ReadableDuration is a duration type that is serialized to JSON in human readable format.
-type ReadableDuration time.Duration
-
-func NewReadableDuration(dur time.Duration) *ReadableDuration {
-	d := ReadableDuration(dur)
-	return &d
-}
-
-func (d *ReadableDuration) String() string {
-	return d.Duration().String()
-}
-
-func (d *ReadableDuration) Duration() time.Duration {
-	if d == nil {
-		return time.Duration(0)
-	}
-	return time.Duration(*d)
-}
-
-func (d *ReadableDuration) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf(`"%s"`, d.Duration().String())), nil
-}
-
-func (d *ReadableDuration) UnmarshalJSON(raw []byte) error {
-	if d == nil {
-		return fmt.Errorf("cannot unmarshal to nil pointer")
-	}
-
-	str := string(raw)
-	if len(str) < 2 || str[0] != '"' || str[len(str)-1] != '"' {
-		return fmt.Errorf("must be enclosed with quotes: %s", str)
-	}
-	dur, err := time.ParseDuration(str[1 : len(str)-1])
-	if err != nil {
-		return err
-	}
-	*d = ReadableDuration(dur)
-	return nil
-}
-
 // AutopilotGetConfiguration is used to query the current Autopilot configuration.
-func (op *Operator) AutopilotGetConfiguration(q *QueryOptions) (*AutopilotConfiguration, error) {
-	r, err := op.c.newRequest("GET", "/v1/operator/autopilot/configuration")
+func (op *Operator) AutopilotGetConfiguration(q *QueryOptions) (*AutopilotConfiguration, *QueryMeta, error) {
+	var resp AutopilotConfiguration
+	qm, err := op.c.query("/v1/operator/autopilot/configuration", &resp, q)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	r.setQueryOptions(q)
-	_, resp, err := requireOK(op.c.doRequest(r))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var out AutopilotConfiguration
-	if err := decodeBody(resp, &out); err != nil {
-		return nil, err
-	}
-
-	return &out, nil
+	return &resp, qm, nil
 }
 
 // AutopilotSetConfiguration is used to set the current Autopilot configuration.
-func (op *Operator) AutopilotSetConfiguration(conf *AutopilotConfiguration, q *WriteOptions) error {
-	r, err := op.c.newRequest("PUT", "/v1/operator/autopilot/configuration")
+func (op *Operator) AutopilotSetConfiguration(conf *AutopilotConfiguration, q *WriteOptions) (*WriteMeta, error) {
+	var out bool
+	wm, err := op.c.write("/v1/operator/autopilot/configuration", conf, &out, q)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	r.setWriteOptions(q)
-	r.obj = conf
-	_, resp, err := requireOK(op.c.doRequest(r))
-	if err != nil {
-		return err
-	}
-	resp.Body.Close()
-	return nil
+	return wm, nil
 }
 
 // AutopilotCASConfiguration is used to perform a Check-And-Set update on the
 // Autopilot configuration. The ModifyIndex value will be respected. Returns
 // true on success or false on failures.
-func (op *Operator) AutopilotCASConfiguration(conf *AutopilotConfiguration, q *WriteOptions) (bool, error) {
-	r, err := op.c.newRequest("PUT", "/v1/operator/autopilot/configuration")
+func (op *Operator) AutopilotCASConfiguration(conf *AutopilotConfiguration, q *WriteOptions) (bool, *WriteMeta, error) {
+	var out bool
+	wm, err := op.c.write("/v1/operator/autopilot/configuration?cas="+strconv.FormatUint(conf.ModifyIndex, 10), conf, &out, q)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
-	r.setWriteOptions(q)
-	r.params.Set("cas", strconv.FormatUint(conf.ModifyIndex, 10))
-	r.obj = conf
-	_, resp, err := requireOK(op.c.doRequest(r))
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
 
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, resp.Body); err != nil {
-		return false, fmt.Errorf("Failed to read response: %v", err)
-	}
-	res := strings.Contains(buf.String(), "true")
-
-	return res, nil
+	return out, wm, nil
 }
 
 // AutopilotServerHealth is used to query Autopilot's top-level view of the health
 // of each Nomad server.
-func (op *Operator) AutopilotServerHealth(q *QueryOptions) (*OperatorHealthReply, error) {
-	r, err := op.c.newRequest("GET", "/v1/operator/autopilot/health")
-	if err != nil {
-		return nil, err
-	}
-	r.setQueryOptions(q)
-	_, resp, err := requireOK(op.c.doRequest(r))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
+func (op *Operator) AutopilotServerHealth(q *QueryOptions) (*OperatorHealthReply, *QueryMeta, error) {
 	var out OperatorHealthReply
-	if err := decodeBody(resp, &out); err != nil {
-		return nil, err
+	qm, err := op.c.query("/v1/operator/autopilot/health", &out, q)
+	if err != nil {
+		return nil, nil, err
 	}
-	return &out, nil
+	return &out, qm, nil
 }

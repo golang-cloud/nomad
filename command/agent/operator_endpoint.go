@@ -51,8 +51,7 @@ func (s *HTTPServer) OperatorRaftConfiguration(resp http.ResponseWriter, req *ht
 // removing peers by address.
 func (s *HTTPServer) OperatorRaftPeer(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	if req.Method != "DELETE" {
-		resp.WriteHeader(http.StatusMethodNotAllowed)
-		return nil, nil
+		return nil, CodedError(404, ErrInvalidMethod)
 	}
 
 	params := req.URL.Query()
@@ -60,14 +59,10 @@ func (s *HTTPServer) OperatorRaftPeer(resp http.ResponseWriter, req *http.Reques
 	_, hasAddress := params["address"]
 
 	if !hasID && !hasAddress {
-		resp.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(resp, "Must specify either ?id with the server's ID or ?address with IP:port of peer to remove")
-		return nil, nil
+		return nil, CodedError(http.StatusBadRequest, "Must specify either ?id with the server's ID or ?address with IP:port of peer to remove")
 	}
 	if hasID && hasAddress {
-		resp.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(resp, "Must specify only one of ?id or ?address")
-		return nil, nil
+		return nil, CodedError(http.StatusBadRequest, "Must specify only one of ?id or ?address")
 	}
 
 	if hasID {
@@ -104,19 +99,19 @@ func (s *HTTPServer) OperatorAutopilotConfiguration(resp http.ResponseWriter, re
 			return nil, nil
 		}
 
-		var reply autopilot.Config
+		var reply structs.AutopilotConfig
 		if err := s.agent.RPC("Operator.AutopilotGetConfiguration", &args, &reply); err != nil {
 			return nil, err
 		}
 
 		out := api.AutopilotConfiguration{
 			CleanupDeadServers:      reply.CleanupDeadServers,
-			LastContactThreshold:    api.NewReadableDuration(reply.LastContactThreshold),
+			LastContactThreshold:    reply.LastContactThreshold,
 			MaxTrailingLogs:         reply.MaxTrailingLogs,
-			ServerStabilizationTime: api.NewReadableDuration(reply.ServerStabilizationTime),
-			RedundancyZoneTag:       reply.RedundancyZoneTag,
+			ServerStabilizationTime: reply.ServerStabilizationTime,
+			EnableRedundancyZones:   reply.EnableRedundancyZones,
 			DisableUpgradeMigration: reply.DisableUpgradeMigration,
-			UpgradeVersionTag:       reply.UpgradeVersionTag,
+			EnableCustomUpgrades:    reply.EnableCustomUpgrades,
 			CreateIndex:             reply.CreateIndex,
 			ModifyIndex:             reply.ModifyIndex,
 		}
@@ -125,25 +120,21 @@ func (s *HTTPServer) OperatorAutopilotConfiguration(resp http.ResponseWriter, re
 
 	case "PUT":
 		var args structs.AutopilotSetConfigRequest
-		s.parseRegion(req, &args.Region)
-		s.parseToken(req, &args.AuthToken)
+		s.parseWriteRequest(req, &args.WriteRequest)
 
 		var conf api.AutopilotConfiguration
-		durations := NewDurationFixer("lastcontactthreshold", "serverstabilizationtime")
-		if err := decodeBodyFunc(req, &conf, durations.FixupDurations); err != nil {
-			resp.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(resp, "Error parsing autopilot config: %v", err)
-			return nil, nil
+		if err := decodeBody(req, &conf); err != nil {
+			return nil, CodedError(http.StatusBadRequest, fmt.Sprintf("Error parsing autopilot config: %v", err))
 		}
 
-		args.Config = autopilot.Config{
+		args.Config = structs.AutopilotConfig{
 			CleanupDeadServers:      conf.CleanupDeadServers,
-			LastContactThreshold:    conf.LastContactThreshold.Duration(),
+			LastContactThreshold:    conf.LastContactThreshold,
 			MaxTrailingLogs:         conf.MaxTrailingLogs,
-			ServerStabilizationTime: conf.ServerStabilizationTime.Duration(),
-			RedundancyZoneTag:       conf.RedundancyZoneTag,
+			ServerStabilizationTime: conf.ServerStabilizationTime,
+			EnableRedundancyZones:   conf.EnableRedundancyZones,
 			DisableUpgradeMigration: conf.DisableUpgradeMigration,
-			UpgradeVersionTag:       conf.UpgradeVersionTag,
+			EnableCustomUpgrades:    conf.EnableCustomUpgrades,
 		}
 
 		// Check for cas value
@@ -151,9 +142,7 @@ func (s *HTTPServer) OperatorAutopilotConfiguration(resp http.ResponseWriter, re
 		if _, ok := params["cas"]; ok {
 			casVal, err := strconv.ParseUint(params.Get("cas"), 10, 64)
 			if err != nil {
-				resp.WriteHeader(http.StatusBadRequest)
-				fmt.Fprintf(resp, "Error parsing cas value: %v", err)
-				return nil, nil
+				return nil, CodedError(http.StatusBadRequest, fmt.Sprintf("Error parsing cas value: %v", err))
 			}
 			args.Config.ModifyIndex = casVal
 			args.CAS = true
@@ -171,16 +160,14 @@ func (s *HTTPServer) OperatorAutopilotConfiguration(resp http.ResponseWriter, re
 		return reply, nil
 
 	default:
-		resp.WriteHeader(http.StatusMethodNotAllowed)
-		return nil, nil
+		return nil, CodedError(404, ErrInvalidMethod)
 	}
 }
 
 // OperatorServerHealth is used to get the health of the servers in the given Region.
 func (s *HTTPServer) OperatorServerHealth(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	if req.Method != "GET" {
-		resp.WriteHeader(http.StatusMethodNotAllowed)
-		return nil, nil
+		return nil, CodedError(404, ErrInvalidMethod)
 	}
 
 	var args structs.GenericRequest
@@ -210,7 +197,7 @@ func (s *HTTPServer) OperatorServerHealth(resp http.ResponseWriter, req *http.Re
 			Version:     server.Version,
 			Leader:      server.Leader,
 			SerfStatus:  server.SerfStatus.String(),
-			LastContact: api.NewReadableDuration(server.LastContact),
+			LastContact: server.LastContact,
 			LastTerm:    server.LastTerm,
 			LastIndex:   server.LastIndex,
 			Healthy:     server.Healthy,
@@ -220,57 +207,4 @@ func (s *HTTPServer) OperatorServerHealth(resp http.ResponseWriter, req *http.Re
 	}
 
 	return out, nil
-}
-
-type durationFixer map[string]bool
-
-func NewDurationFixer(fields ...string) durationFixer {
-	d := make(map[string]bool)
-	for _, field := range fields {
-		d[field] = true
-	}
-	return d
-}
-
-// FixupDurations is used to handle parsing any field names in the map to time.Durations
-func (d durationFixer) FixupDurations(raw interface{}) error {
-	rawMap, ok := raw.(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	for key, val := range rawMap {
-		switch val.(type) {
-		case map[string]interface{}:
-			if err := d.FixupDurations(val); err != nil {
-				return err
-			}
-
-		case []interface{}:
-			for _, v := range val.([]interface{}) {
-				if err := d.FixupDurations(v); err != nil {
-					return err
-				}
-			}
-
-		case []map[string]interface{}:
-			for _, v := range val.([]map[string]interface{}) {
-				if err := d.FixupDurations(v); err != nil {
-					return err
-				}
-			}
-
-		default:
-			if d[strings.ToLower(key)] {
-				// Convert a string value into an integer
-				if vStr, ok := val.(string); ok {
-					dur, err := time.ParseDuration(vStr)
-					if err != nil {
-						return err
-					}
-					rawMap[key] = dur
-				}
-			}
-		}
-	}
-	return nil
 }

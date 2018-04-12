@@ -17,7 +17,7 @@ standard upgrade flow.
 
 ## Nomad 0.8.0
 
-#### Raft Protocol Version Compatibility
+### Raft Protocol Version Compatibility
 
 When upgrading to Nomad 0.8.0 from a version lower than 0.7.0, users will need to
 set the [`-raft-protocol`](/docs/agent/options.html#_raft_protocol) option to 1 in
@@ -50,6 +50,39 @@ Raft Protocol versions supported by each Consul version:
 
 In order to enable all [Autopilot](/guides/cluster/autopilot.html) features, all servers
 in a Nomad cluster must be running with Raft protocol version 3 or later.
+
+### Periods in Environment Variable Names No Longer Escaped
+
+*Applications which expect periods in environment variable names to be replaced
+with underscores must be updated.*
+
+In Nomad 0.7 periods (`.`) in environment variables names were replaced with an
+underscore in both the [`env`](/docs/job-specification/env.html) and
+[`template`](/docs/job-specification/template.html) stanzas.
+
+In Nomad 0.8 periods are *not* replaced and will be included in environment
+variables verbatim.
+
+For example the following stanza:
+
+```text
+env {
+  registry.consul.addr = "${NOMAD_IP_http}:8500"
+}
+```
+
+In Nomad 0.7 would be exposed to the task as
+`registry_consul_addr=127.0.0.1:8500`. In Nomad 0.8 it will now appear exactly
+as specified: `registry.consul.addr=127.0.0.1:8500`.
+
+### Client APIs Unavailable on Older Nodes
+
+Because Nomad 0.8 uses a new RPC mechanism to route node-specific APIs like
+[`nomad alloc fs`](/docs/commands/alloc/fs.html) through servers to the node,
+0.8 CLIs are incompatible using these commands on clients older than 0.8.
+
+To access these commands on older clients either continue to use a pre-0.8
+version of the CLI, or upgrade all clients to 0.8.
 
 ## Nomad 0.6.0
 
@@ -156,6 +189,6 @@ be resubmitted with the updated job syntax using a Nomad 0.3.0 binary.
 
 After updating the Servers and job files, Nomad Clients can be upgraded by first
 draining the node so no tasks are running on it. This can be verified by running
-`nomad node-status <node-id>` and verify there are no tasks in the `running`
+`nomad node status <node-id>` and verify there are no tasks in the `running`
 state. Once that is done the client can be killed, the `data_dir` should be
 deleted and then Nomad 0.3.0 can be launched.

@@ -16,8 +16,7 @@ To enable Autopilot features (with the exception of dead server cleanup),
 the [`raft_protocol`](/docs/agent/configuration/server.html#raft_protocol) setting in
 the Agent configuration must be set to 3 or higher on all servers. In Nomad
 0.8 this setting defaults to 2; in Nomad 0.9 it will default to 3. For more
-information, see the [Version Upgrade section]
-(/docs/upgrade/upgrade-specific.html#raft-protocol-version-compatibility)
+information, see the [Version Upgrade section](/docs/upgrade/upgrade-specific.html#raft-protocol-version-compatibility)
 on Raft Protocol versions.
 
 ## Configuration
@@ -32,9 +31,9 @@ autopilot {
     last_contact_threshold = 200ms
     max_trailing_logs = 250
     server_stabilization_time = "10s"
-    redundancy_zone_tag = "az"
+    enable_redundancy_zones = false
     disable_upgrade_migration = false
-    upgrade_version_tag = ""
+    enable_custom_upgrades = false
 }
 ```
 
@@ -49,21 +48,21 @@ CleanupDeadServers = true
 LastContactThreshold = 200ms
 MaxTrailingLogs = 250
 ServerStabilizationTime = 10s
-RedundancyZoneTag = ""
+EnableRedundancyZones = false
 DisableUpgradeMigration = false
-UpgradeVersionTag = ""
+EnableCustomUpgrades = false
 
-$ Nomad operator autopilot set-config -cleanup-dead-servers=false
+$ nomad operator autopilot set-config -cleanup-dead-servers=false
 Configuration updated!
 
-$ Nomad operator autopilot get-config
+$ nomad operator autopilot get-config
 CleanupDeadServers = false
 LastContactThreshold = 200ms
 MaxTrailingLogs = 250
 ServerStabilizationTime = 10s
-RedundancyZoneTag = ""
+EnableRedundancyZones = false
 DisableUpgradeMigration = false
-UpgradeVersionTag = ""
+EnableCustomUpgrades = false
 ```
 
 ## Dead Server Cleanup
@@ -95,9 +94,9 @@ A server is considered healthy if all of the following conditions are true:
 - The number of Raft log entries it trails the leader by does not exceed
 `MaxTrailingLogs`
 
-The status of these health checks can be viewed through the [`/v1/operator/autopilot/health`]
-(/api/operator.html#read-health) HTTP endpoint, with a top level
-`Healthy` field indicating the overall status of the cluster:
+The status of these health checks can be viewed through the 
+[`/v1/operator/autopilot/health`](/api/operator.html#read-health) HTTP endpoint, with
+a top level `Healthy` field indicating the overall status of the cluster:
 
 ```
 $ curl localhost:8500/v1/operator/autopilot/health
@@ -164,15 +163,21 @@ isolated failure domains such as AWS Availability Zones; users would be forced t
 have an overly-large quorum (2-3 nodes per AZ) or give up redundancy within an AZ by
 deploying just one server in each.
 
-If the `RedundancyZoneTag` setting is set, Nomad will use its value to look for a
-zone in each server's specified [`-meta`](/docs/agent/configuration/client.html#meta)
-tag. For example, if `RedundancyZoneTag` is set to `zone`, and `-meta zone=east1a`
-is used when starting a server, that server's redundancy zone will be `east1a`.
+If the `EnableRedundancyZones` setting is set, Nomad will use its value to look for a
+zone in each server's specified [`redundancy_zone`](/docs/agent/configuration/server.html#redundancy_zone)
+field.
 
 Here's an example showing how to configure this:
 
+```hcl
+/* config.hcl */
+server {
+    redundancy_zone = "west-1"
+}
 ```
-$ nomad operator autopilot set-config -redundancy-zone-tag=zone
+
+```
+$ nomad operator autopilot set-config -enable-redundancy-zones=true
 Configuration updated!
 ```
 
@@ -192,28 +197,25 @@ equals or exceeds that of the old servers, Autopilot will begin promoting the ne
 to voters and demoting the old servers. After this is finished, the old servers can be
 safely removed from the cluster.
 
-To check the Nomad version of the servers, either the [autopilot health]
-(/api/operator.html#read-health) endpoint or the `Nomad members`
-command can be used:
+To check the Nomad version of the servers, either the [autopilot health](/api/operator.html#read-health)
+endpoint or the `nomad members`command can be used:
 
 ```
-$ Nomad members
-Node   Address         Status  Type    Build  Protocol  DC
-node1  127.0.0.1:8301  alive   server  0.7.5  2         dc1
-node2  127.0.0.1:8703  alive   server  0.7.5  2         dc1
-node3  127.0.0.1:8803  alive   server  0.7.5  2         dc1
-node4  127.0.0.1:8203  alive   server  0.8.0  2         dc1
+$ nomad server members
+Name   Address    Port  Status  Leader  Protocol  Build  Datacenter  Region
+node1  127.0.0.1  4648  alive   true    3         0.7.1  dc1         global
+node2  127.0.0.1  4748  alive   false   3         0.7.1  dc1         global
+node3  127.0.0.1  4848  alive   false   3         0.7.1  dc1         global
+node4  127.0.0.1  4948  alive   false   3         0.8.0  dc1         global
 ```
 
 ### Migrations Without a Nomad Version Change
 
-The `UpgradeVersionTag` can be used to override the version information used during
+The `EnableCustomUpgrades` field can be used to override the version information used during
 a migration, so that the migration logic can be used for updating the cluster when
 changing configuration.
 
-If the `UpgradeVersionTag` setting is set, Nomad will use its value to look for a
-version in each server's specified [`-meta`](/docs/agent/configuration/client.html#meta)
-tag. For example, if `UpgradeVersionTag` is set to `build`, and `-meta build:0.0.2`
-is used when starting a server, that server's version will be `0.0.2` when considered in
-a migration. The upgrade logic will follow semantic versioning and the version string
+If the `EnableCustomUpgrades` setting is set to `true`, Nomad will use its value to look for a
+version in each server's specified [`upgrade_version`](/docs/agent/configuration/server.html#upgrade_version)
+tag. The upgrade logic will follow semantic versioning and the `upgrade_version`
 must be in the form of either `X`, `X.Y`, or `X.Y.Z`.

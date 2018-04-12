@@ -23,6 +23,7 @@ const (
 type NamespaceListStub struct {
 	ID          string
 	Name        string
+	Quota       string
 	Description string
 	Hash        []byte
 	CreateIndex uint64
@@ -44,6 +45,7 @@ func (a *Namespace) Stub() *NamespaceListStub {
 	return &NamespaceListStub{
 		ID:          a.Name,
 		Name:        a.Name,
+		Quota:       a.Quota,
 		Description: a.Description,
 		Hash:        a.Hash,
 		CreateIndex: a.CreateIndex,

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	multierror "github.com/hashicorp/go-multierror"
+	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/hcl"
 	"github.com/hashicorp/hcl/hcl/ast"
 	"github.com/hashicorp/nomad/helper"
@@ -355,6 +356,7 @@ func parseClient(result **ClientConfig, list *ast.ObjectList) error {
 		"chroot_env",
 		"network_interface",
 		"network_speed",
+		"memory_total_mb",
 		"cpu_total_compute",
 		"max_kill_timeout",
 		"client_max_port",
@@ -536,6 +538,8 @@ func parseServer(result **ServerConfig, list *ast.ObjectList) error {
 		"encrypt",
 		"authoritative_region",
 		"non_voting_server",
+		"redundancy_zone",
+		"upgrade_version",
 	}
 	if err := helper.CheckHCLKeys(listVal, valid); err != nil {
 		return err
@@ -557,6 +561,12 @@ func parseServer(result **ServerConfig, list *ast.ObjectList) error {
 	}
 	if err := dec.Decode(m); err != nil {
 		return err
+	}
+
+	if config.UpgradeVersion != "" {
+		if _, err := version.NewVersion(config.UpgradeVersion); err != nil {
+			return fmt.Errorf("error parsing upgrade_version: %v", err)
+		}
 	}
 
 	*result = &config
@@ -632,6 +642,7 @@ func parseTelemetry(result **Telemetry, list *ast.ObjectList) error {
 		"publish_allocation_metrics",
 		"publish_node_metrics",
 		"datadog_address",
+		"datadog_tags",
 		"prometheus_metrics",
 		"circonus_api_token",
 		"circonus_api_app",
@@ -692,9 +703,13 @@ func parseConsulConfig(result **config.ConsulConfig, list *ast.ObjectList) error
 		"checks_use_advertise",
 		"client_auto_join",
 		"client_service_name",
+		"client_http_check_name",
 		"key_file",
 		"server_auto_join",
 		"server_service_name",
+		"server_http_check_name",
+		"server_serf_check_name",
+		"server_rpc_check_name",
 		"ssl",
 		"timeout",
 		"token",
@@ -865,9 +880,9 @@ func parseAutopilot(result **config.AutopilotConfig, list *ast.ObjectList) error
 		"server_stabilization_time",
 		"last_contact_threshold",
 		"max_trailing_logs",
-		"redundancy_zone_tag",
+		"enable_redundancy_zones",
 		"disable_upgrade_migration",
-		"upgrade_version_tag",
+		"enable_custom_upgrades",
 	}
 
 	if err := helper.CheckHCLKeys(listVal, valid); err != nil {

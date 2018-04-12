@@ -35,12 +35,12 @@ The table below shows this endpoint's support for
 
 ```text
 $ curl \
-    https://nomad.rocks/v1/nodes
+    https://localhost:4646/v1/nodes
 ```
 
 ```text
 $ curl \
-    https://nomad.rocks/v1/nodes?prefix=prod
+    https://localhost:4646/v1/nodes?prefix=prod
 ```
 
 ### Sample Response
@@ -87,7 +87,7 @@ The table below shows this endpoint's support for
 
 ```text
 $ curl \
-    https://nomad.rocks/v1/node/fb2170a8-257d-3c64-b14d-bc06cc94e34c
+    https://localhost:4646/v1/node/fb2170a8-257d-3c64-b14d-bc06cc94e34c
 ```
 
 ### Sample Response
@@ -153,6 +153,26 @@ $ curl \
   "NodeClass": "",
   "ComputedClass": "v1:10952212473894849978",
   "Drain": false,
+  "Events": [
+     {
+       "CreateIndex": 0,
+       "Details": null,
+       "Message": "Node Registered",
+       "Subsystem": "Cluster",
+       "Timestamp": "2018-03-29T16:26:48Z"
+     },
+     {
+       "CreateIndex": 11,
+       "Details":
+       {
+         "driver": "docker"
+       },
+       "Message": "Driver docker is not detected",
+       "Subsystem": "Driver",
+       "Timestamp": "2018-03-29T16:27:48.556094143Z"
+     }
+  ],
+
   "Status": "ready",
   "StatusDescription": "",
   "StatusUpdatedAt": 1495748907,
@@ -189,7 +209,7 @@ The table below shows this endpoint's support for
 
 ```text
 $ curl \
-    https://nomad.rocks/v1/node/e02b6169-83bd-9df6-69bd-832765f333eb/allocations
+    https://localhost:4646/v1/node/e02b6169-83bd-9df6-69bd-832765f333eb/allocations
 ```
 
 ### Sample Response
@@ -538,7 +558,7 @@ The table below shows this endpoint's support for
 
 ```text
 $ curl \
-    https://nomad.rocks/v1/node/fb2170a8-257d-3c64-b14d-bc06cc94e34c/evaluate
+    https://localhost:4646/v1/node/fb2170a8-257d-3c64-b14d-bc06cc94e34c/evaluate
 ```
 
 ### Sample Response
@@ -598,7 +618,7 @@ The table below shows this endpoint's support for
 
 ```text
 $ curl \
-    -XPOST https://nomad.rocks/v1/node/fb2170a8-257d-3c64-b14d-bc06cc94e34c/drain?enable=true
+    -XPOST https://localhost:4646/v1/node/fb2170a8-257d-3c64-b14d-bc06cc94e34c/drain?enable=true
 ```
 
 ### Sample Response
@@ -643,7 +663,7 @@ The table below shows this endpoint's support for
 
 ```text
 $ curl \
-    -XPOST https://nomad.rocks/v1/node/fb2170a8-257d-3c64-b14d-bc06cc94e34c/purge
+    -XPOST https://localhost:4646/v1/node/fb2170a8-257d-3c64-b14d-bc06cc94e34c/purge
 ```
 
 ### Sample Response
@@ -660,3 +680,30 @@ $ curl \
   "KnownLeader": false
 }
 ```
+
+#### Field Reference
+
+- Events - A list of the last 10 node events for this node. A node event is a
+  high level concept of noteworthy events for a node.
+
+  Each node event has the following fields:
+
+  - `Message` - The specific message for the event, detailing what occurred.
+
+  - `Subsystem` - The subsystem where the node event took place. Subsysystems
+    include:
+
+    - `Drain` - The Nomad server draining subsystem.
+
+    - `Driver` - The Nomad client driver subsystem.
+
+    - `Heartbeat` - Either Nomad client or server heartbeating subsystem.
+
+    - `Cluster` - Nomad server cluster management subsystem.
+
+  - `Details` - Any further details about the event, formatted as a key/value
+    pair.
+
+  - `Timestamp` - Each node event has an ISO 8601 timestamp.
+
+  - `CreateIndex` - The Raft index at which the event was committed.

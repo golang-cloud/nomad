@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/lib/freeport"
+	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/nomad/structs"
 	"github.com/hashicorp/nomad/nomad/structs/config"
 )
@@ -49,13 +50,14 @@ func TestConfig_Merge(t *testing.T) {
 		LeaveOnTerm:               false,
 		EnableSyslog:              false,
 		SyslogFacility:            "local0.info",
-		DisableUpdateCheck:        false,
+		DisableUpdateCheck:        helper.BoolToPtr(false),
 		DisableAnonymousSignature: false,
 		BindAddr:                  "127.0.0.1",
 		Telemetry: &Telemetry{
 			StatsiteAddr:                       "127.0.0.1:8125",
 			StatsdAddr:                         "127.0.0.1:8125",
 			DataDogAddr:                        "127.0.0.1:8125",
+			DataDogTags:                        []string{"cat1:tag1", "cat2:tag2"},
 			PrometheusMetrics:                  true,
 			DisableHostname:                    false,
 			DisableTaggedMetrics:               true,
@@ -84,6 +86,7 @@ func TestConfig_Merge(t *testing.T) {
 			},
 			NetworkSpeed:   100,
 			CpuCompute:     100,
+			MemoryMB:       100,
 			MaxKillTimeout: "20s",
 			ClientMaxPort:  19996,
 			Reserved: &Resources{
@@ -107,6 +110,8 @@ func TestConfig_Merge(t *testing.T) {
 			HeartbeatGrace:         30 * time.Second,
 			MinHeartbeatTTL:        30 * time.Second,
 			MaxHeartbeatsPerSecond: 30.0,
+			RedundancyZone:         "foo",
+			UpgradeVersion:         "foo",
 		},
 		ACL: &ACLConfig{
 			Enabled:          true,
@@ -165,9 +170,9 @@ func TestConfig_Merge(t *testing.T) {
 			ServerStabilizationTime: 1 * time.Second,
 			LastContactThreshold:    1 * time.Second,
 			MaxTrailingLogs:         1,
-			RedundancyZoneTag:       "1",
+			EnableRedundancyZones:   &falseValue,
 			DisableUpgradeMigration: &falseValue,
-			UpgradeVersionTag:       "1",
+			EnableCustomUpgrades:    &falseValue,
 		},
 	}
 
@@ -182,13 +187,14 @@ func TestConfig_Merge(t *testing.T) {
 		LeaveOnTerm:               true,
 		EnableSyslog:              true,
 		SyslogFacility:            "local0.debug",
-		DisableUpdateCheck:        true,
+		DisableUpdateCheck:        helper.BoolToPtr(true),
 		DisableAnonymousSignature: true,
 		BindAddr:                  "127.0.0.2",
 		Telemetry: &Telemetry{
 			StatsiteAddr:                       "127.0.0.2:8125",
 			StatsdAddr:                         "127.0.0.2:8125",
 			DataDogAddr:                        "127.0.0.1:8125",
+			DataDogTags:                        []string{"cat1:tag1", "cat2:tag2"},
 			PrometheusMetrics:                  true,
 			DisableHostname:                    true,
 			PublishNodeMetrics:                 true,
@@ -227,6 +233,7 @@ func TestConfig_Merge(t *testing.T) {
 			ClientMinPort:  22000,
 			NetworkSpeed:   105,
 			CpuCompute:     105,
+			MemoryMB:       105,
 			MaxKillTimeout: "50s",
 			Reserved: &Resources{
 				CPU:                 15,
@@ -260,6 +267,8 @@ func TestConfig_Merge(t *testing.T) {
 			RetryInterval:          "10s",
 			retryInterval:          time.Second * 10,
 			NonVotingServer:        true,
+			RedundancyZone:         "bar",
+			UpgradeVersion:         "bar",
 		},
 		ACL: &ACLConfig{
 			Enabled:          true,
@@ -328,9 +337,9 @@ func TestConfig_Merge(t *testing.T) {
 			ServerStabilizationTime: 2 * time.Second,
 			LastContactThreshold:    2 * time.Second,
 			MaxTrailingLogs:         2,
-			RedundancyZoneTag:       "2",
+			EnableRedundancyZones:   &trueValue,
 			DisableUpgradeMigration: &trueValue,
-			UpgradeVersionTag:       "2",
+			EnableCustomUpgrades:    &trueValue,
 		},
 	}
 

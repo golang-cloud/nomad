@@ -2,6 +2,8 @@
 
 package nomad
 
+import "net/rpc"
+
 // EnterpriseEndpoints holds the set of enterprise only endpoints to register
 type EnterpriseEndpoints struct{}
 

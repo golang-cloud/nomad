@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/hashicorp/consul/agent/consul/autopilot"
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/nomad/helper/tlsutil"
 	"github.com/hashicorp/nomad/helper/uuid"
@@ -82,11 +81,17 @@ type Config struct {
 	// by the other servers and clients
 	RPCAddr *net.TCPAddr
 
-	// RPCAdvertise is the address that is advertised to other nodes for
+	// ClientRPCAdvertise is the address that is advertised to client nodes for
 	// the RPC endpoint. This can differ from the RPC address, if for example
 	// the RPCAddr is unspecified "0.0.0.0:4646", but this address must be
 	// reachable
-	RPCAdvertise *net.TCPAddr
+	ClientRPCAdvertise *net.TCPAddr
+
+	// ServerRPCAdvertise is the address that is advertised to other servers for
+	// the RPC endpoint. This can differ from the RPC address, if for example
+	// the RPCAddr is unspecified "0.0.0.0:4646", but this address must be
+	// reachable
+	ServerRPCAdvertise *net.TCPAddr
 
 	// RaftConfig is the configuration used for Raft in the local DC
 	RaftConfig *raft.Config
@@ -97,6 +102,13 @@ type Config struct {
 	// (Enterprise-only) NonVoter is used to prevent this server from being added
 	// as a voting member of the Raft cluster.
 	NonVoter bool
+
+	// (Enterprise-only) RedundancyZone is the redundancy zone to use for this server.
+	RedundancyZone string
+
+	// (Enterprise-only) UpgradeVersion is the custom upgrade version to use when
+	// performing upgrade migrations.
+	UpgradeVersion string
 
 	// SerfConfig is the configuration for the serf cluster
 	SerfConfig *serf.Config
@@ -189,7 +201,7 @@ type Config struct {
 	// an evaluation that has been Nacked more than once. This delay is
 	// compounding after the first Nack. This value should be significantly
 	// longer than the initial delay as the purpose it severs is to apply
-	// back-pressure as evaluatiions are being Nacked either due to scheduler
+	// back-pressure as evaluations are being Nacked either due to scheduler
 	// failures or because they are hitting their Nack timeout, both of which
 	// are signs of high server resource usage.
 	EvalNackSubsequentReenqueueDelay time.Duration
@@ -264,12 +276,12 @@ type Config struct {
 	DisableTaggedMetrics bool
 
 	// BackwardsCompatibleMetrics determines whether to show methods of
-	// displaying metrics for older verions, or to only show the new format
+	// displaying metrics for older versions, or to only show the new format
 	BackwardsCompatibleMetrics bool
 
 	// AutopilotConfig is used to apply the initial autopilot config when
 	// bootstrapping.
-	AutopilotConfig *autopilot.Config
+	AutopilotConfig *structs.AutopilotConfig
 
 	// ServerHealthInterval is the frequency with which the health of the
 	// servers in the cluster will be updated.
@@ -339,7 +351,7 @@ func DefaultConfig() *Config {
 		TLSConfig:                        &config.TLSConfig{},
 		ReplicationBackoff:               30 * time.Second,
 		SentinelGCInterval:               30 * time.Second,
-		AutopilotConfig: &autopilot.Config{
+		AutopilotConfig: &structs.AutopilotConfig{
 			CleanupDeadServers:      true,
 			LastContactThreshold:    200 * time.Millisecond,
 			MaxTrailingLogs:         250,
@@ -356,7 +368,7 @@ func DefaultConfig() *Config {
 	}
 	c.EnabledSchedulers = append(c.EnabledSchedulers, structs.JobTypeCore)
 
-	// Default the number of schedulers to match the coores
+	// Default the number of schedulers to match the cores
 	c.NumSchedulers = runtime.NumCPU()
 
 	// Increase our reap interval to 3 days instead of 24h.

@@ -13,7 +13,7 @@ func TestOperator_Autopilot_SetConfig_Implements(t *testing.T) {
 	var _ cli.Command = &OperatorRaftListCommand{}
 }
 
-func TestOperatorAutopilotSetConfigCommmand(t *testing.T) {
+func TestOperatorAutopilotSetConfigCommand(t *testing.T) {
 	t.Parallel()
 	s, _, addr := testServer(t, false, nil)
 	defer s.Shutdown()
@@ -42,7 +42,7 @@ func TestOperatorAutopilotSetConfigCommmand(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	conf, err := client.Operator().AutopilotGetConfiguration(nil)
+	conf, _, err := client.Operator().AutopilotGetConfiguration(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,10 +53,10 @@ func TestOperatorAutopilotSetConfigCommmand(t *testing.T) {
 	if conf.MaxTrailingLogs != 99 {
 		t.Fatalf("bad: %#v", conf)
 	}
-	if conf.LastContactThreshold.Duration() != 123*time.Millisecond {
+	if conf.LastContactThreshold != 123*time.Millisecond {
 		t.Fatalf("bad: %#v", conf)
 	}
-	if conf.ServerStabilizationTime.Duration() != 123*time.Millisecond {
+	if conf.ServerStabilizationTime != 123*time.Millisecond {
 		t.Fatalf("bad: %#v", conf)
 	}
 }

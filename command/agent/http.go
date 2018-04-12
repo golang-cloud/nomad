@@ -18,7 +18,6 @@ import (
 	assetfs "github.com/elazarl/go-bindata-assetfs"
 	"github.com/hashicorp/nomad/helper/tlsutil"
 	"github.com/hashicorp/nomad/nomad/structs"
-	"github.com/mitchellh/mapstructure"
 	"github.com/rs/cors"
 	"github.com/ugorji/go/codec"
 )
@@ -49,11 +48,12 @@ var (
 
 // HTTPServer is used to wrap an Agent and expose it over an HTTP interface
 type HTTPServer struct {
-	agent    *Agent
-	mux      *http.ServeMux
-	listener net.Listener
-	logger   *log.Logger
-	Addr     string
+	agent      *Agent
+	mux        *http.ServeMux
+	listener   net.Listener
+	listenerCh chan struct{}
+	logger     *log.Logger
+	Addr       string
 }
 
 // NewHTTPServer starts new HTTP server over the agent
@@ -91,11 +91,12 @@ func NewHTTPServer(agent *Agent, config *Config) (*HTTPServer, error) {
 
 	// Create the server
 	srv := &HTTPServer{
-		agent:    agent,
-		mux:      mux,
-		listener: ln,
-		logger:   agent.logger,
-		Addr:     ln.Addr().String(),
+		agent:      agent,
+		mux:        mux,
+		listener:   ln,
+		listenerCh: make(chan struct{}),
+		logger:     agent.logger,
+		Addr:       ln.Addr().String(),
 	}
 	srv.registerHandlers(config.EnableDebug)
 
@@ -105,7 +106,10 @@ func NewHTTPServer(agent *Agent, config *Config) (*HTTPServer, error) {
 		return nil, err
 	}
 
-	go http.Serve(ln, gzip(mux))
+	go func() {
+		defer close(srv.listenerCh)
+		http.Serve(ln, gzip(mux))
+	}()
 
 	return srv, nil
 }
@@ -132,6 +136,7 @@ func (s *HTTPServer) Shutdown() {
 	if s != nil {
 		s.logger.Printf("[DEBUG] http: Shutting down http server")
 		s.listener.Close()
+		<-s.listenerCh // block until http.Serve has returned.
 	}
 }
 
@@ -276,7 +281,7 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 		reqURL := req.URL.String()
 		start := time.Now()
 		defer func() {
-			s.logger.Printf("[DEBUG] http: Request %v (%v)", reqURL, time.Now().Sub(start))
+			s.logger.Printf("[DEBUG] http: Request %v %v (%v)", req.Method, reqURL, time.Now().Sub(start))
 		}()
 		obj, err := handler(resp, req)
 
@@ -338,24 +343,6 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 func decodeBody(req *http.Request, out interface{}) error {
 	dec := json.NewDecoder(req.Body)
 	return dec.Decode(&out)
-}
-
-// decodeBodyFunc is used to decode a JSON request body invoking
-// a given callback function
-func decodeBodyFunc(req *http.Request, out interface{}, cb func(interface{}) error) error {
-	var raw interface{}
-	dec := json.NewDecoder(req.Body)
-	if err := dec.Decode(&raw); err != nil {
-		return err
-	}
-
-	// Invoke the callback prior to decode
-	if cb != nil {
-		if err := cb(raw); err != nil {
-			return err
-		}
-	}
-	return mapstructure.Decode(raw, out)
 }
 
 // setIndex is used to set the index response header
@@ -469,7 +456,7 @@ func (s *HTTPServer) parse(resp http.ResponseWriter, req *http.Request, r *strin
 	return parseWait(resp, req, b)
 }
 
-// parseWriteRequest is a convience method for endpoints that need to parse a
+// parseWriteRequest is a convenience method for endpoints that need to parse a
 // write request.
 func (s *HTTPServer) parseWriteRequest(req *http.Request, w *structs.WriteRequest) {
 	parseNamespace(req, &w.Namespace)
