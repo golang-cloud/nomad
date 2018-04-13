@@ -18,4 +18,5 @@ func NewEnterpriseEndpoints(s *Server) *EnterpriseEndpoints {
 // Register is a no-op in oss.
 func (e *EnterpriseEndpoints) Register(s *rpc.Server) {
 	s.Register(&Namespace{e.s})
+	s.Register(&Quota{e.s})
 }

@@ -13,6 +13,10 @@ func (n *nomadFSM) registerLogAppliers() {
 	ns := &ns{n}
 	n.enterpriseAppliers[structs.NamespaceUpsertRequestType] = ns.applyNamespaceUpsert
 	n.enterpriseAppliers[structs.NamespaceDeleteRequestType] = ns.applyNamespaceDelete
+
+	n.enterpriseAppliers[structs.QuotaUpsertRequestType] = ns.applyQuotaUpsert
+	n.enterpriseAppliers[structs.QuotaDeleteRequestType] = ns.applyQuotaDelete
+	n.enterpriseAppliers[structs.QuotaUsageUpsertRequestType] = ns.applyQuotaUsageUpsert
 }
 
 // registerSnapshotRestorers is a no-op for open-source only FSMs.

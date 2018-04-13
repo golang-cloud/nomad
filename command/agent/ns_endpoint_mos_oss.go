@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/nomad/nomad/structs"
 )
 
-func (s *HTTPServer) NamespacesRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+func (s *HTTPServer) namespacesRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	if req.Method != "GET" {
 		return nil, CodedError(405, ErrInvalidMethod)
 	}
@@ -31,7 +31,7 @@ func (s *HTTPServer) NamespacesRequest(resp http.ResponseWriter, req *http.Reque
 	return out.Namespaces, nil
 }
 
-func (s *HTTPServer) NamespaceSpecificRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+func (s *HTTPServer) namespaceSpecificRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	ID := strings.TrimPrefix(req.URL.Path, "/v1/namespace/")
 	switch req.Method {
 	case "GET":
@@ -84,8 +84,6 @@ func (s *HTTPServer) namespaceCreate(resp http.ResponseWriter, req *http.Request
 	}
 	setIndex(resp, out.Index)
 	return nil, nil
-
-	return nil, CodedError(405, ErrInvalidMethod)
 }
 
 func (s *HTTPServer) namespaceUpdate(resp http.ResponseWriter, req *http.Request, ID string) (interface{}, error) {
