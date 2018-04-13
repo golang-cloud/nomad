@@ -19,11 +19,13 @@ standard upgrade flow.
 
 ### Raft Protocol Version Compatibility
 
-When upgrading to Nomad 0.8.0 from a version lower than 0.7.0, users will need to
-set the [`-raft-protocol`](/docs/agent/options.html#_raft_protocol) option to 1 in
-order to maintain backwards compatibility with the old servers during the upgrade.
-After the servers have been migrated to version 0.8.0, `-raft-protocol` can be moved
-up to 2 and the servers restarted to match the default.
+When upgrading to Nomad 0.8.0 from a version lower than 0.7.0, users will need
+to set the
+[`raft_protocol`](/docs/agent/configuration/server.html#raft_protocol) option
+in their `server` stanza to 1 in order to maintain backwards compatibility with
+the old servers during the upgrade.  After the servers have been migrated to
+version 0.8.0, `raft_protocol` can be moved up to 2 and the servers restarted
+to match the default.
 
 The Raft protocol must be stepped up in this way; only adjacent version numbers are
 compatible (for example, version 1 cannot talk to version 3). Here is a table of the
@@ -50,6 +52,22 @@ Raft Protocol versions supported by each Consul version:
 
 In order to enable all [Autopilot](/guides/cluster/autopilot.html) features, all servers
 in a Nomad cluster must be running with Raft protocol version 3 or later.
+
+### Node Draining Improvements
+
+Node draining via the [`node drain`][drain-cli] command or the [drain
+API][drain-api] has been substantially changed in Nomad 0.8. In Nomad 0.7.1 and
+earlier draining a node would immediately stop all allocations on the node
+being drained. Nomad 0.8 now supports a [`migrate`][migrate] stanza in job
+specifications to control how many allocations may be migrated at once and the
+default will be used for existing jobs.
+
+The `drain` command now blocks until the drain completes. To get the Nomad
+0.7.1 and earlier drain behavior use the command: `nomad node drain -enable
+-force -detach <node-id>`
+
+See the [`migrate` stanza documentation][migrate] and [Decommissioning Nodes
+guide](/guides/node-draining.html) for details.
 
 ### Periods in Environment Variable Names No Longer Escaped
 
@@ -83,6 +101,24 @@ Because Nomad 0.8 uses a new RPC mechanism to route node-specific APIs like
 
 To access these commands on older clients either continue to use a pre-0.8
 version of the CLI, or upgrade all clients to 0.8.
+
+### CLI Command Changes
+
+Nomad 0.8 has changed the organization of CLI commands to be based on
+subcommands. An example of this change is the change from `nomad alloc-status`
+to `nomad alloc status`. All commands have been made to be backwards compatible,
+but operators should update any usage of the old style commands to the new style
+as the old style will be deprecated in future versions of Nomad.
+
+### RPC Advertise Address
+
+The behavior of the [advertised RPC
+address](/docs/agent/configuration/index.html#rpc-1) has changed to be only used
+to advertise the RPC address of servers to client nodes. Server to server
+communication is done using the advertised Serf address. Existing cluster's
+should not be effected but the advertised RPC address may need to be updated to
+allow connecting client's over a NAT.
+
 
 ## Nomad 0.6.0
 
@@ -192,3 +228,7 @@ draining the node so no tasks are running on it. This can be verified by running
 `nomad node status <node-id>` and verify there are no tasks in the `running`
 state. Once that is done the client can be killed, the `data_dir` should be
 deleted and then Nomad 0.3.0 can be launched.
+
+[drain-api]: /api/nodes.html#drain-node
+[drain-cli]: /docs/commands/node/drain.html
+[migrate]: /docs/job-specification/migrate.html
